@@ -47,8 +47,12 @@ Add an `outputLimits` block to `~/.pi/agent/settings.json` (global) or `.pi/sett
 |---|---|---|
 | `maxLines` | `2000` (pi's built-in) | Max lines per tool result |
 | `maxBytes` | `51200` (pi's built-in 50KB) | Max bytes per tool result (whichever limit is hit first wins) |
-| `tools` | `{}` | Per-tool overrides of `maxLines` / `maxBytes` |
-| `tailTools` | `["bash"]` | Tools whose results keep the **end** of the output instead of the beginning |
+| `tools` | `{}` | Per-tool overrides of `maxLines` / `maxBytes` (any tool name; unknown/third-party names are fine) |
+| `tailTools` | `["bash"]` | Tools whose results keep the **end** of the output instead of the beginning; additive on top of the default `bash` |
+
+All values must be positive integers. Editing the settings is a plain JSON edit of the file named above — no extension-specific commands or environment variables are involved.
+
+**When changes take effect:** the config is read at session start, so start a new pi session (or run `/reload`) after editing the settings.
 
 ## How it works
 
