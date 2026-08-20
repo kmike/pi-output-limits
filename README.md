@@ -78,7 +78,7 @@ npm test          # vitest
 npm run typecheck # tsc --noEmit
 ```
 
-Tests exercise the extension through a minimal fake of pi's extension API, using the real `truncateHead`/`truncateTail` from `@earendil-works/pi-coding-agent`. CI runs typecheck + tests on Node 20 and 22.
+Tests exercise the extension through a minimal fake of pi's extension API, using the real `truncateHead`/`truncateTail` from `@earendil-works/pi-coding-agent`. CI runs typecheck + tests on Node 22 and 24 (pi requires Node >= 22.19).
 
 ## Limitations
 
