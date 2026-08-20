@@ -34,6 +34,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
 	CONFIG_DIR_NAME,
+	DEFAULT_MAX_BYTES,
+	DEFAULT_MAX_LINES,
 	formatSize,
 	getAgentDir,
 	truncateHead,
@@ -44,8 +46,9 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const DEFAULT_MAX_LINES = 500;
-const DEFAULT_MAX_BYTES = 16 * 1024;
+// Defaults intentionally match pi's built-in truncation limits (imported from
+// pi-coding-agent, currently 2000 lines / 50KB), so installing the extension
+// changes nothing until the user configures different values.
 const DEFAULT_TAIL_TOOLS = ["bash"];
 
 interface Limits {
@@ -82,6 +85,17 @@ const fallbackConfig: RuntimeConfig = {
 	tools: new Map(),
 	tailTools: new Set(DEFAULT_TAIL_TOOLS),
 };
+
+/** True when the config matches pi's built-in behavior exactly (no-op mode). */
+function isDefaultConfig(config: RuntimeConfig): boolean {
+	return (
+		config.global.maxLines === DEFAULT_MAX_LINES &&
+		config.global.maxBytes === DEFAULT_MAX_BYTES &&
+		config.tools.size === 0 &&
+		config.tailTools.size === DEFAULT_TAIL_TOOLS.length &&
+		DEFAULT_TAIL_TOOLS.every((t) => config.tailTools.has(t))
+	);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -266,13 +280,25 @@ export default function piOutputLimits(pi: ExtensionAPI): void {
 
 	// Tool descriptions still quote pi's built-in 2000-line/50KB limits; tell the
 	// model the real caps once, in the system prompt, instead of re-registering
-	// every tool just to patch its description.
+	// every tool just to patch its description. With default settings the
+	// extension is a no-op, so don't spend system-prompt tokens on it.
 	pi.on("before_agent_start", (event) => {
+		if (isDefaultConfig(config)) return;
+
 		const limits = config.global;
+		// Limits above pi's built-ins can't raise the caps of built-in tools —
+		// those discard output beyond their own limits before we see it. Say so,
+		// otherwise the note would promise caps the built-in tools don't honor.
+		const exceedsBuiltin =
+			limits.maxLines > DEFAULT_MAX_LINES ||
+			limits.maxBytes > DEFAULT_MAX_BYTES;
+		const caveat = exceedsBuiltin
+			? ` Limits above pi's built-in ${DEFAULT_MAX_LINES} lines / ${formatSize(DEFAULT_MAX_BYTES)} only affect extension-registered tools; built-in tools discard output beyond their own caps before this extension runs.`
+			: "";
 		return {
 			systemPrompt:
 				event.systemPrompt +
-				`\n\nNote: tool outputs are additionally capped at ~${limits.maxLines} lines / ${formatSize(limits.maxBytes)} per result by the pi-output-limits extension (individual tools may have stricter caps; bash keeps the tail of its output). When a result is truncated, its footer shows the real counts and a temp-file path to the full output.`,
+				`\n\nNote: tool outputs are additionally capped at ~${limits.maxLines} lines / ${formatSize(limits.maxBytes)} per result by the pi-output-limits extension (individual tools may have stricter caps; bash keeps the tail of its output). When a result is truncated, its footer shows the real counts and a temp-file path to the full output.${caveat}`,
 		};
 	});
 
@@ -309,10 +335,11 @@ export default function piOutputLimits(pi: ExtensionAPI): void {
 				: truncateHead(text, limits);
 
 			if (!t.truncated) {
-				if (text !== block.text) {
-					changed = true;
-					return { ...block, text };
-				}
+				// Within our limits: pass the block through untouched. In
+				// particular, when the built-in tool already truncated (because our
+				// limits are the same or higher), its own footer is still accurate —
+				// stripping it here would hide the truncation from the model
+				// entirely.
 				return block;
 			}
 
