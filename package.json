@@ -1,0 +1,18 @@
+{
+  "name": "pi-output-limits",
+  "version": "0.1.0",
+  "description": "Global, configurable caps on tool output size for the pi coding agent",
+  "type": "module",
+  "keywords": [
+    "pi",
+    "pi-coding-agent",
+    "extension",
+    "truncate",
+    "output-limits",
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "license": "MIT"
+}
