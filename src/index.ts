@@ -16,9 +16,12 @@
  * - For bash results, `details.truncation` / `details.fullOutputPath` are patched
  *   so the TUI shows the real numbers and strips the footer from display, exactly
  *   as it does for native truncation.
- * - A one-line note is appended to the system prompt via `before_agent_start` so
- *   the model knows the real caps (tool descriptions still quote pi's built-in
- *   limits, which are higher).
+ * - A one-line note is appended to the system prompt via `before_agent_start`
+ *   when limits are lowered, so the model knows the real caps (tool descriptions
+ *   still quote pi's built-in limits, which are higher). Limits set ABOVE pi's
+ *   built-ins can't raise built-in tool caps — the user is warned about that at
+ *   session start instead of it costing system-prompt tokens. (They remain
+ *   effective for third-party tools, which have no built-in caps.)
  *
  * Config (global `~/.pi/agent/settings.json`, or project `.pi/settings.json`
  * when the project is trusted; project values win):
@@ -86,15 +89,50 @@ const fallbackConfig: RuntimeConfig = {
 	tailTools: new Set(DEFAULT_TAIL_TOOLS),
 };
 
-/** True when the config matches pi's built-in behavior exactly (no-op mode). */
-function isDefaultConfig(config: RuntimeConfig): boolean {
+/** True when the config changes anything the model should know about. */
+function needsSystemPromptNote(config: RuntimeConfig): boolean {
+	if (
+		config.global.maxLines < DEFAULT_MAX_LINES ||
+		config.global.maxBytes < DEFAULT_MAX_BYTES
+	)
+		return true;
+	for (const limits of config.tools.values()) {
+		if (
+			(limits.maxLines ?? DEFAULT_MAX_LINES) < DEFAULT_MAX_LINES ||
+			(limits.maxBytes ?? DEFAULT_MAX_BYTES) < DEFAULT_MAX_BYTES
+		)
+			return true;
+	}
 	return (
-		config.global.maxLines === DEFAULT_MAX_LINES &&
-		config.global.maxBytes === DEFAULT_MAX_BYTES &&
-		config.tools.size === 0 &&
-		config.tailTools.size === DEFAULT_TAIL_TOOLS.length &&
-		DEFAULT_TAIL_TOOLS.every((t) => config.tailTools.has(t))
+		config.tailTools.size !== DEFAULT_TAIL_TOOLS.length ||
+		!DEFAULT_TAIL_TOOLS.every((t) => config.tailTools.has(t))
 	);
+}
+
+/** pi's built-in tools; limits above pi's caps are ineffective for these. */
+const BUILTIN_TOOLS = new Set(["bash", "edit", "find", "grep", "ls", "read", "write"]);
+
+/**
+ * Limits above pi's built-ins can never raise the caps of built-in tools —
+ * those discard output beyond their own limits before this extension sees the
+ * result. Collect such settings for a user-facing warning. Overrides for tools
+ * we don't recognize are left alone: third-party tools have no built-in caps,
+ * so higher limits are legitimate there.
+ */
+function collectIneffectiveLimits(config: RuntimeConfig): string[] {
+	const ineffective: string[] = [];
+	if (config.global.maxLines > DEFAULT_MAX_LINES)
+		ineffective.push(`maxLines=${config.global.maxLines}`);
+	if (config.global.maxBytes > DEFAULT_MAX_BYTES)
+		ineffective.push(`maxBytes=${config.global.maxBytes}`);
+	for (const [tool, limits] of config.tools) {
+		if (!BUILTIN_TOOLS.has(tool)) continue;
+		if ((limits.maxLines ?? 0) > DEFAULT_MAX_LINES)
+			ineffective.push(`tools.${tool}.maxLines=${limits.maxLines}`);
+		if ((limits.maxBytes ?? 0) > DEFAULT_MAX_BYTES)
+			ineffective.push(`tools.${tool}.maxBytes=${limits.maxBytes}`);
+	}
+	return ineffective;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -276,29 +314,32 @@ export default function piOutputLimits(pi: ExtensionAPI): void {
 
 	pi.on("session_start", (_event, ctx) => {
 		config = loadRuntimeConfig(ctx.cwd, ctx.isProjectTrusted());
+		const ineffective = collectIneffectiveLimits(config);
+		if (ineffective.length > 0) {
+			ctx.ui.notify(
+				`pi-output-limits: ${ineffective.join(", ")} exceed pi's built-in caps ` +
+					`(${DEFAULT_MAX_LINES} lines / ${formatSize(DEFAULT_MAX_BYTES)}); built-in tools still ` +
+					`truncate at their own limits, so these values only affect extension-registered tools.`,
+				"warning",
+			);
+		}
 	});
 
 	// Tool descriptions still quote pi's built-in 2000-line/50KB limits; tell the
 	// model the real caps once, in the system prompt, instead of re-registering
-	// every tool just to patch its description. With default settings the
-	// extension is a no-op, so don't spend system-prompt tokens on it.
+	// every tool just to patch its description. Only when limits are actually
+	// lowered — a no-op config isn't worth system-prompt tokens.
 	pi.on("before_agent_start", (event) => {
-		if (isDefaultConfig(config)) return;
+		if (!needsSystemPromptNote(config)) return;
 
-		const limits = config.global;
-		// Limits above pi's built-ins can't raise the caps of built-in tools —
-		// those discard output beyond their own limits before we see it. Say so,
-		// otherwise the note would promise caps the built-in tools don't honor.
-		const exceedsBuiltin =
-			limits.maxLines > DEFAULT_MAX_LINES ||
-			limits.maxBytes > DEFAULT_MAX_BYTES;
-		const caveat = exceedsBuiltin
-			? ` Limits above pi's built-in ${DEFAULT_MAX_LINES} lines / ${formatSize(DEFAULT_MAX_BYTES)} only affect extension-registered tools; built-in tools discard output beyond their own caps before this extension runs.`
-			: "";
+		// Built-in tools cap at pi's own limits no matter what is configured;
+		// never promise the model more than that.
+		const maxLines = Math.min(config.global.maxLines, DEFAULT_MAX_LINES);
+		const maxBytes = Math.min(config.global.maxBytes, DEFAULT_MAX_BYTES);
 		return {
 			systemPrompt:
 				event.systemPrompt +
-				`\n\nNote: tool outputs are additionally capped at ~${limits.maxLines} lines / ${formatSize(limits.maxBytes)} per result by the pi-output-limits extension (individual tools may have stricter caps; bash keeps the tail of its output). When a result is truncated, its footer shows the real counts and a temp-file path to the full output.${caveat}`,
+				`\n\nNote: tool outputs are additionally capped at ~${maxLines} lines / ${formatSize(maxBytes)} per result by the pi-output-limits extension (individual tools may have stricter caps; bash keeps the tail of its output). When a result is truncated, its footer shows the real counts and a temp-file path to the full output.`,
 		};
 	});
 

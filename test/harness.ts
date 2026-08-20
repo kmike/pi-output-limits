@@ -39,16 +39,23 @@ export interface SessionOptions {
 	trusted?: boolean;
 }
 
+export interface Notification {
+	message: string;
+	type?: string;
+}
+
 /**
  * Point the agent dir at a temp dir, optionally write global/project settings,
  * and fire session_start so the extension (re)loads its config.
+ * Returns the notifications the extension sent to the user during the event.
  */
 export function startSession(
 	harness: ReturnType<typeof createHarness>,
 	opts: SessionOptions = {},
-): void {
+): Notification[] {
 	const agentDir = mkdtempSync(join(tmpdir(), "pi-ol-agent-"));
 	const projectDir = mkdtempSync(join(tmpdir(), "pi-ol-proj-"));
+	const notifications: Notification[] = [];
 	try {
 		if (opts.globalSettings) {
 			writeFileSync(
@@ -69,12 +76,20 @@ export function startSession(
 			harness.fire(
 				"session_start",
 				{ type: "session_start", reason: "startup" },
-				{ cwd: projectDir, isProjectTrusted: () => opts.trusted ?? false },
+				{
+					cwd: projectDir,
+					isProjectTrusted: () => opts.trusted ?? false,
+					ui: {
+						notify: (message: string, type?: string) =>
+							notifications.push({ message, type }),
+					},
+				},
 			);
 		} finally {
 			if (previous === undefined) delete process.env[ENV_AGENT_DIR];
 			else process.env[ENV_AGENT_DIR] = previous;
 		}
+		return notifications;
 	} finally {
 		rmSync(agentDir, { recursive: true, force: true });
 		rmSync(projectDir, { recursive: true, force: true });

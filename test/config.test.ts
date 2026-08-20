@@ -153,6 +153,53 @@ describe("config loading", () => {
 	});
 });
 
+describe("session warnings for ineffective limits", () => {
+	it("warns when global limits exceed pi's built-in caps", () => {
+		const h = createHarness();
+		const notifications = startSession(h, {
+			globalSettings: { outputLimits: { maxLines: 5000, maxBytes: 102400 } },
+		});
+		expect(notifications).toHaveLength(1);
+		expect(notifications[0].type).toBe("warning");
+		expect(notifications[0].message).toContain("maxLines=5000");
+		expect(notifications[0].message).toContain("maxBytes=102400");
+		expect(notifications[0].message).toContain("extension-registered tools");
+	});
+
+	it("warns about above-cap overrides for built-in tools", () => {
+		const h = createHarness();
+		const notifications = startSession(h, {
+			globalSettings: {
+				outputLimits: { tools: { bash: { maxLines: 9000 } } },
+			},
+		});
+		expect(notifications).toHaveLength(1);
+		expect(notifications[0].message).toContain("tools.bash.maxLines=9000");
+	});
+
+	it("does not warn about above-cap overrides for third-party tools", () => {
+		const h = createHarness();
+		const notifications = startSession(h, {
+			globalSettings: {
+				outputLimits: { tools: { webfetch: { maxLines: 9000 } } },
+			},
+		});
+		expect(notifications).toHaveLength(0);
+	});
+
+	it("does not warn at or below pi's caps", () => {
+		const h = createHarness();
+		expect(
+			startSession(h, {
+				globalSettings: {
+					outputLimits: { maxLines: 100, tools: { bash: { maxLines: 2000 } } },
+				},
+			}),
+		).toHaveLength(0);
+		expect(startSession(h)).toHaveLength(0);
+	});
+});
+
 describe("config validation", () => {
 	function expectConfigError(settings: Record<string, unknown>, match: RegExp) {
 		const h = createHarness();

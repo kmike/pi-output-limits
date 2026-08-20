@@ -13,7 +13,8 @@ Pi's built-in tools truncate their own output at hardcoded limits (2000 lines / 
 - `bash` keeps the **tail** of output (where errors usually are), matching pi's native behavior; everything else keeps the head
 - When truncation removes content that pi itself did not save, the full output is written to a temp file and the footer points at it — the model can always recover the rest
 - For `bash`, result details are patched so the TUI shows the real truncation numbers, exactly like native truncation
-- A one-line note is appended to the system prompt so the model knows the real caps — but only when you've actually configured non-default limits (built-in tool descriptions still quote pi's higher limits — patching those would require re-registering every tool for cosmetic gain)
+- A one-line note is appended to the system prompt so the model knows the real caps — but only when limits are actually lowered (built-in tool descriptions still quote pi's higher limits — patching those would require re-registering every tool for cosmetic gain)
+- Limits set *above* pi's built-ins can't raise built-in tool caps, so those trigger a **warning to you** at session start instead of costing system-prompt tokens
 
 ## Install
 
@@ -64,7 +65,7 @@ tool executes (built-in truncation at 50KB/2000 may or may not fire)
 ## Limits at or above pi's built-ins
 
 - **Exactly pi's limits (the default):** complete no-op. When a built-in tool truncates, its native footer and TUI warning pass through untouched.
-- **Higher than pi's limits:** built-in tools still discard anything beyond 2000 lines / 50KB before this extension sees the result, so their native truncation stands (footer preserved). Higher values only make a difference for **extension-registered tools**, which have no built-in caps. The system-prompt note says as much when you configure this.
+- **Higher than pi's limits:** built-in tools still discard anything beyond 2000 lines / 50KB before this extension sees the result, so their native truncation stands (footer preserved) — the extension warns you at session start that such values are ineffective for built-in tools. Higher values remain fully effective for **third-party/extension-registered tools**, which have no built-in caps (and are not warned about).
 
 If you need *higher* limits for a specific built-in tool, override that tool via
 `create*ToolDefinition` + `registerTool` (see [@arcanemachine/pi-read](https://github.com/arcanemachine/pi-read)

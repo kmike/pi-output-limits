@@ -51,26 +51,28 @@ describe("before_agent_start system prompt note", () => {
 		expect(fireBeforeAgentStart(h)?.systemPrompt).toContain("pi-output-limits");
 	});
 
-	it("warns that higher limits cannot raise built-in tool caps", () => {
+	it("adds no note when limits are only raised above pi's (the user is warned instead)", () => {
 		const h = createHarness();
 		startSession(h, {
 			globalSettings: { outputLimits: { maxLines: 5000, maxBytes: 102400 } },
 		});
-		const prompt = fireBeforeAgentStart(h)?.systemPrompt ?? "";
-		expect(prompt).toContain("~5000 lines / 100.0KB");
-		expect(prompt).toContain(
-			"built-in tools discard output beyond their own caps",
-		);
+		expect(fireBeforeAgentStart(h)).toBeUndefined();
 	});
 
-	it("omits the built-in-caps caveat when limits stay at or below pi's", () => {
+	it("never promises more than pi's built-in caps when mixed with lower overrides", () => {
 		const h = createHarness();
 		startSession(h, {
-			globalSettings: { outputLimits: { maxLines: 100 } },
+			globalSettings: {
+				outputLimits: {
+					maxLines: 5000,
+					tools: { bash: { maxLines: 300 } },
+				},
+			},
 		});
 		const prompt = fireBeforeAgentStart(h)?.systemPrompt ?? "";
-		expect(prompt).not.toContain(
-			"built-in tools discard output beyond their own caps",
-		);
+		// Note exists because bash is stricter, but the global claim is clamped
+		// to what built-in tools can actually deliver.
+		expect(prompt).toContain("~2000 lines / 50.0KB");
+		expect(prompt).not.toContain("5000");
 	});
 });
