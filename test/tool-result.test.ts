@@ -69,6 +69,9 @@ describe("tool_result truncation", () => {
 			truncatedBy: "lines",
 			outputLines: 500,
 			totalLines: 600,
+			// The TUI's "N lines shown (X limit)" warning renders from these:
+			maxLines: 500,
+			maxBytes: 51200,
 		});
 		const path = result.details.fullOutputPath;
 		expect(existsSync(path)).toBe(true);
@@ -267,6 +270,8 @@ describe("interaction with pi's built-in truncation", () => {
 			truncated: true,
 			outputLines: 100,
 			totalLines: 3000,
+			maxLines: 100,
+			maxBytes: 51200,
 		});
 	});
 });

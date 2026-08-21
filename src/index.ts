@@ -81,6 +81,8 @@ interface TruncationDetails {
 		outputLines?: number;
 		totalLines?: number;
 		totalBytes?: number;
+		maxLines?: number;
+		maxBytes?: number;
 	};
 	fullOutputPath?: string;
 }
@@ -436,14 +438,19 @@ export default function piOutputLimits(pi: ExtensionAPI): void {
 			if (isBash) {
 				// Keep the TUI's native truncation warning accurate: it renders
 				// from details.truncation and strips a trailing footer that
-				// mentions fullOutputPath — ours is formatted to match.
+				// mentions fullOutputPath — ours is formatted to match. maxBytes /
+				// maxLines must be patched too: the TUI's "N lines shown (X limit)"
+				// warning falls back to pi's built-in 50KB when they are missing.
 				patchedDetails = {
 					...details,
 					truncation: {
+						...details.truncation,
 						truncated: true,
 						truncatedBy: t.truncatedBy ?? "bytes",
 						outputLines: t.outputLines,
 						totalLines,
+						maxLines: limits.maxLines,
+						maxBytes: limits.maxBytes,
 					},
 					fullOutputPath,
 				};
