@@ -12,7 +12,9 @@
  * - When this extension truncates output that the built-in tool did not, the
  *   full text is saved to a temp file and the footer points at it, so the model
  *   can always recover the rest. (Pi itself only writes bash temp files when
- *   its own 50KB limit trips.)
+ *   its own 50KB limit trips.) `read` results are the exception: the source
+ *   file already holds the full text, so their footer points back at it with
+ *   the next offset instead of writing a redundant temp copy.
  * - For bash results, `details.truncation` / `details.fullOutputPath` are patched
  *   so the TUI shows the real numbers and strips the footer from display, exactly
  *   as it does for native truncation.
@@ -339,7 +341,7 @@ export default function piOutputLimits(pi: ExtensionAPI): void {
 		return {
 			systemPrompt:
 				event.systemPrompt +
-				`\n\nNote: tool outputs are additionally capped at ~${maxLines} lines / ${formatSize(maxBytes)} per result by the pi-output-limits extension (individual tools may have stricter caps; bash keeps the tail of its output). When a result is truncated, its footer shows the real counts and a temp-file path to the full output.`,
+				`\n\nNote: tool outputs are additionally capped at ~${maxLines} lines / ${formatSize(maxBytes)} per result by the pi-output-limits extension (individual tools may have stricter caps; bash keeps the tail of its output). When a result is truncated, its footer shows the real counts and how to recover the rest.`,
 		};
 	});
 
@@ -354,6 +356,23 @@ export default function piOutputLimits(pi: ExtensionAPI): void {
 		};
 		const tail = config.tailTools.has(toolName);
 		const isBash = toolName === "bash";
+
+		// read results come straight from a file the model can re-read with
+		// offset/limit, so truncating one never needs a temp copy: the footer
+		// points back at the source file instead. (read's offset is 1-indexed.)
+		const readInput =
+			toolName === "read" &&
+			isRecord(event.input) &&
+			typeof event.input.path === "string"
+				? {
+						path: event.input.path,
+						offset:
+							typeof event.input.offset === "number" &&
+									event.input.offset >= 1
+								? event.input.offset
+								: 1,
+					}
+					: undefined;
 
 		const details = (event.details ?? {}) as TruncationDetails;
 		const builtinTruncated = details.truncation?.truncated === true;
@@ -392,13 +411,22 @@ export default function piOutputLimits(pi: ExtensionAPI): void {
 			const totalBytes = details.truncation?.totalBytes ?? t.totalBytes;
 
 			// The built-in bash temp file (if any) holds the complete output —
-			// reuse it. Otherwise save what we received before cutting.
-			const fullOutputPath =
-				details.fullOutputPath ?? saveFullOutput(toolName, text);
+			// reuse it. Otherwise save what we received before cutting. Reads skip
+			// the temp copy entirely: the model continues from the source file.
+			const fullOutputPath = readInput
+				? undefined
+				: (details.fullOutputPath ?? saveFullOutput(toolName, text));
 
-			const where = fullOutputPath
-				? ` Full output: ${fullOutputPath}`
-				: " Full output unavailable (temp file write failed).";
+			let where: string;
+			if (readInput) {
+				where = t.firstLineExceedsLimit
+					? ` Line ${readInput.offset} alone exceeds the byte limit; use bash to read it.`
+					: ` Use offset=${readInput.offset + t.outputLines} to continue.`;
+			} else {
+				where = fullOutputPath
+					? ` Full output: ${fullOutputPath}`
+					: " Full output unavailable (temp file write failed).";
+			}
 			const footer =
 				`\n\n[Showing ${t.outputLines} of ${totalLines} lines ` +
 				`(${formatSize(t.outputBytes)} of ${formatSize(totalBytes)}, ` +

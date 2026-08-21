@@ -75,6 +75,53 @@ describe("tool_result truncation", () => {
 		expect(readFileSync(path, "utf-8")).toBe(original);
 	});
 
+	it("points read results back at the source file instead of a temp copy", () => {
+		const h = createHarness();
+		startSession(h, { globalSettings: { outputLimits: { maxLines: 100 } } });
+		const result = fireToolResult(h, {
+			input: { path: "/tmp/big.ts", offset: 51 },
+			content: [textBlock(makeLines(600))],
+		});
+
+		const text = firstText(result);
+		expect(text).toMatch(/\[Showing 100 of 600 lines /);
+		// Kept file lines 51-150, so the next read continues at 151.
+		expect(text).toContain("Use offset=151 to continue.");
+		expect(text).not.toContain("Full output:");
+	});
+
+	it("assumes offset 1 for reads called without an offset", () => {
+		const h = createHarness();
+		startSession(h, { globalSettings: { outputLimits: { maxLines: 100 } } });
+		const result = fireToolResult(h, {
+			input: { path: "/tmp/big.ts" },
+			content: [textBlock(makeLines(600))],
+		});
+		expect(firstText(result)).toContain("Use offset=101 to continue.");
+	});
+
+	it("suggests bash when a read's first line alone exceeds the byte limit", () => {
+		const h = createHarness();
+		startSession(h, { globalSettings: { outputLimits: { maxBytes: 10 } } });
+		const result = fireToolResult(h, {
+			input: { path: "/tmp/oneline.txt" },
+			content: [textBlock("a-single-line-way-over-ten-bytes-long")],
+		});
+		const text = firstText(result);
+		expect(text).toContain("alone exceeds the byte limit; use bash");
+		expect(text).not.toContain("Use offset=");
+	});
+
+	it("falls back to a temp file for read events without a source path", () => {
+		const h = createHarness();
+		startSession(h, { globalSettings: { outputLimits: { maxLines: 100 } } });
+		const original = makeLines(600);
+		const result = fireToolResult(h, { content: [textBlock(original)] });
+		const text = firstText(result);
+		expect(text).toContain("Full output:");
+		expect(readFileSync(footerPath(text), "utf-8")).toBe(original);
+	});
+
 	it("enforces byte limits", () => {
 		const h = createHarness();
 		startSession(h, {

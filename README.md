@@ -11,7 +11,7 @@ Pi's built-in tools truncate their own output at hardcoded limits (2000 lines / 
 - One config block caps all tools (`read`, `bash`, `grep`, `find`, `ls`, subagent results, web fetches, ...)
 - Per-tool overrides (e.g. stricter limits for `bash`)
 - `bash` keeps the **tail** of output (where errors usually are), matching pi's native behavior; everything else keeps the head
-- When truncation removes content that pi itself did not save, the full output is written to a temp file and the footer points at it — the model can always recover the rest
+- When truncation removes content that pi itself did not save, the full output is written to a temp file and the footer points at it — the model can always recover the rest; `read` results are the exception: they get a `Use offset=…` pointer back to the source file instead of a redundant temp copy
 - For `bash`, result details are patched so the TUI shows the real truncation numbers, exactly like native truncation
 - A one-line note is appended to the system prompt so the model knows the real caps — but only when limits are actually lowered (built-in tool descriptions still quote pi's higher limits — patching those would require re-registering every tool for cosmetic gain)
 - Limits set *above* pi's built-ins can't raise built-in tool caps, so those trigger a **warning to you** at session start instead of costing system-prompt tokens
@@ -61,7 +61,9 @@ tool executes (built-in truncation at 50KB/2000 may or may not fire)
   └─► tool_result event
         └─► pi-output-limits re-truncates to your limits,
             strips the built-in footer, saves full output to a temp
-            file if needed, appends a footer with real counts + path,
+            file if needed (read: footer points back at the source
+            file with the next offset instead), appends a footer
+            with real counts + recovery path,
             patches details.truncation for the TUI
               └─► result goes to the model's context
 ```
