@@ -98,6 +98,7 @@ Tests exercise the extension through a minimal fake of pi's extension API, using
 
 ## Limitations
 
+- Limits can't be **raised** for built-in tools: `read`, `bash`, etc. discard output beyond 2000 lines / 50KB before this extension sees it, so its caps are effectively ceilings (higher values still work for third-party tools, which have no built-in caps).
 - Non-text content blocks (images and other media) pass through untouched.
 
 ## License
