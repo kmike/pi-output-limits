@@ -3,6 +3,20 @@
   "version": "0.1.0",
   "description": "Global, configurable caps on tool output size for the pi coding agent",
   "type": "module",
+  "license": "MIT",
+  "author": "Mikhail Korobov",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kmike/pi-output-limits.git"
+  },
+  "bugs": "https://github.com/kmike/pi-output-limits/issues",
+  "homepage": "https://github.com/kmike/pi-output-limits#readme",
+  "files": [
+    "src"
+  ],
+  "engines": {
+    "node": ">=22.19"
+  },
   "keywords": [
     "pi",
     "pi-coding-agent",
@@ -17,7 +31,8 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm test"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"

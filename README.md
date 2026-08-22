@@ -1,5 +1,9 @@
 # pi-output-limits
 
+[![CI](https://github.com/kmike/pi-output-limits/actions/workflows/ci.yml/badge.svg)](https://github.com/kmike/pi-output-limits/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/github/license/kmike/pi-output-limits?color=blue)](https://github.com/kmike/pi-output-limits/blob/main/LICENSE)
+[![pi extension](https://img.shields.io/badge/pi-extension-8A4FFF)](https://pi.dev)
+
 Global, configurable caps on tool output size for the [pi coding agent](https://github.com/earendil-works/pi-mono).
 
 Pi's built-in tools truncate their own output at hardcoded limits (2000 lines / 50KB, whichever comes first). This extension re-truncates **every** tool's output — built-in *and* extension-registered — down to your own limits, before the result reaches the model's context. It works via the `tool_result` event, so there is no monkey-patching and no re-implementation of any tool.
@@ -19,10 +23,19 @@ Pi's built-in tools truncate their own output at hardcoded limits (2000 lines / 
 ## Install
 
 ```bash
-# From a local checkout
-pi install /path/to/pi-output-limits
+pi install npm:pi-output-limits
+```
 
-# Or load once for a session
+To track a specific branch or commit instead, install from git (frozen at the
+ref; won't auto-update with `pi update`):
+
+```bash
+pi install git:github.com/kmike/pi-output-limits@main
+```
+
+Or load once for a session from a local checkout:
+
+```bash
 pi -e /path/to/pi-output-limits/src/index.ts
 ```
 
