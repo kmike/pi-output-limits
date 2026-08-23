@@ -50,4 +50,13 @@ jobs:
 
       - run: npm test
 
-      - run: npm publish --provenance --access public
+      # Idempotent: re-tagging an already-published version (e.g. tagging v0.1.0
+      # after its local first publish) must not fail the run with a 403.
+      - name: Publish
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if [ "$(npm view "pi-output-limits@$V" version 2>/dev/null)" = "$V" ]; then
+            echo "pi-output-limits@$V is already on npm — skipping publish"
+          else
+            npm publish --provenance --access public
+          fi
