@@ -9,10 +9,12 @@
  * Design notes:
  * - bash (and anything in `tailTools`) keeps the END of the output, like pi's
  *   built-in bash truncation. Everything else keeps the beginning.
- * - When this extension truncates output that the built-in tool did not, the
- *   full text is saved to a temp file and the footer points at it, so the model
- *   can always recover the rest. (Pi itself only writes bash temp files when
- *   its own 50KB limit trips.) `read` results are the exception: the source
+ * - When this extension truncates output that the built-in tool did not, what
+ *   arrived is saved to a temp file and the footer points at it, so the model
+ *   can read the rest — "rest" relative to what reached us, since anything pi
+ *   already discarded at its own cap is not in the file. (Pi itself only writes
+ *   bash temp files when its own 50KB limit trips, and those do hold the
+ *   complete output.) `read` results are the exception: the source
  *   file already holds the full text, so their footer points back at it with
  *   the next offset instead of writing a redundant temp copy.
  * - For bash results, `details.truncation` / `details.fullOutputPath` are patched
@@ -20,10 +22,16 @@
  *   as it does for native truncation.
  * - A one-line note is appended to the system prompt via `before_agent_start`
  *   when limits are lowered, so the model knows the real caps (tool descriptions
- *   still quote pi's built-in limits, which are higher). Limits set ABOVE pi's
- *   built-ins can't raise built-in tool caps — the user is warned about that at
- *   session start instead of it costing system-prompt tokens. (They remain
- *   effective for third-party tools, which have no built-in caps.)
+ *   still quote pi's built-in limits, which are higher) and where to read what a
+ *   truncation left out. It promises exactly that much: "nothing is lost" would
+ *   overstate it for the reasons above, and the temp write can fail. The note
+ *   also says nothing about the conversation as a whole: per-result truncation
+ *   is not a session limit, and naming one — even to deny it — invites the model
+ *   to budget against it.
+ * - Limits set ABOVE pi's built-ins can't raise built-in tool caps — the user is
+ *   warned about that at session start instead of it costing system-prompt
+ *   tokens. (They remain effective for third-party tools, which have no built-in
+ *   caps.)
  *
  * Config (global `~/.pi/agent/settings.json`, or project `.pi/settings.json`
  * when the project is trusted; project values win):
@@ -343,7 +351,7 @@ export default function piOutputLimits(pi: ExtensionAPI): void {
 		return {
 			systemPrompt:
 				event.systemPrompt +
-				`\n\nNote: tool outputs are additionally capped at ~${maxLines} lines / ${formatSize(maxBytes)} per result by the pi-output-limits extension (individual tools may have stricter caps; bash keeps the tail of its output). When a result is truncated, its footer shows the real counts and how to recover the rest.`,
+				`\n\nNote: the pi-output-limits extension truncates long tool results (~${maxLines} lines / ${formatSize(maxBytes)} per result, on top of any cap the tool applies itself; bash keeps the tail). A truncated result's footer gives the real counts and where to read what it left out: a saved temp file, or the source file at the next offset.`,
 		};
 	});
 

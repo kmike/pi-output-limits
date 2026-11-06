@@ -41,6 +41,38 @@ describe("before_agent_start system prompt note", () => {
 		expect(result?.systemPrompt).toContain("BASE PROMPT");
 		expect(result?.systemPrompt).toContain("~100 lines / 4.0KB");
 		expect(result?.systemPrompt).toContain("pi-output-limits");
+		expect(result?.systemPrompt).toContain("bash keeps the tail");
+	});
+
+	it("frames truncation as recoverable, not as a shrinking allowance", () => {
+		const h = createHarness();
+		startSession(h, {
+			globalSettings: { outputLimits: { maxLines: 100, maxBytes: 4096 } },
+		});
+		const note = (fireBeforeAgentStart(h)?.systemPrompt ?? "").slice(
+			"BASE PROMPT".length,
+		);
+		// The fact the model needs at the moment of loss: the footer says where
+		// to read what the cut removed.
+		expect(note).toContain("where to read what it left out");
+		expect(note).toContain("temp file");
+		expect(note).toContain("next offset");
+		// Not a promise of total recoverability: pi discards beyond its own caps
+		// first, so the saved file can be a slice of a slice.
+		expect(note.toLowerCase()).not.toContain("nothing is lost");
+		expect(note).toContain("on top of any cap the tool applies itself");
+		// And nothing that reads as a session-level allowance: a per-result cap is
+		// not a budget, and even denying a budget names one.
+		for (const word of [
+			"budget",
+			"allowance",
+			"remaining",
+			"exhaust",
+			"context window",
+			"conversation",
+		]) {
+			expect(note.toLowerCase()).not.toContain(word);
+		}
 	});
 
 	it("adds a note when only a per-tool override is configured", () => {
