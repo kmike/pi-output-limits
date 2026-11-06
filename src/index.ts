@@ -19,8 +19,16 @@
  *   so the TUI shows the real numbers and strips the footer from display, exactly
  *   as it does for native truncation.
  * - A one-line note is appended to the system prompt via `before_agent_start`
- *   when limits are lowered, so the model knows the real caps (tool descriptions
- *   still quote pi's built-in limits, which are higher). Limits set ABOVE pi's
+ *   when limits are lowered, so the model knows the real caps (tool
+ *   descriptions still quote pi's built-in limits, which are higher) and
+ *   where to read what a truncation left out. It promises exactly that much:
+ *   "nothing is lost" would overstate it, because pi discards beyond its own
+ *   2000 lines / 50KB before this extension sees a result, so the saved file
+ *   can be a slice of a slice, and the temp write can fail. The note also says
+ *   nothing about the conversation as a whole: per-result truncation is not a
+ *   session limit, and naming one — even to deny it — invites the model to
+ *   budget against it.
+ * - Limits set ABOVE pi's
  *   built-ins can't raise built-in tool caps — the user is warned about that at
  *   session start instead of it costing system-prompt tokens. (They remain
  *   effective for third-party tools, which have no built-in caps.)
@@ -343,7 +351,7 @@ export default function piOutputLimits(pi: ExtensionAPI): void {
 		return {
 			systemPrompt:
 				event.systemPrompt +
-				`\n\nNote: tool outputs are additionally capped at ~${maxLines} lines / ${formatSize(maxBytes)} per result by the pi-output-limits extension (individual tools may have stricter caps; bash keeps the tail of its output). When a result is truncated, its footer shows the real counts and how to recover the rest.`,
+				`\n\nNote: the pi-output-limits extension truncates long tool results (~${maxLines} lines / ${formatSize(maxBytes)} per result, on top of any cap the tool applies itself; bash keeps the tail). A truncated result's footer gives the real counts and where to read what it left out: a saved temp file, or the source file at the next offset.`,
 		};
 	});
 
